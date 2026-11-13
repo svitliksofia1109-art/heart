@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>For You</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050508;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Consolas', 'Courier New', monospace;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #hint {
+            position: absolute;
+            bottom: 35px;
+            color: rgba(255, 220, 180, 0.7);
+            font-size: 14px;
+            letter-spacing: 2px;
+            pointer-events: none;
+            transition: opacity 0.6s ease;
+        }
+    </style>
+</head>
+<body>
+    <div id="hint">[ натисни, щоб відкрити лист ]</div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const hint = document.getElementById('hint');
+
+        let width, height;
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        const ENVELOPE_ART = [
+            "//////////////////////////////////////////////////",
+            "/\\                                              /\\",
+            "/  \\                                          /  \\",
+            "/    \\                                      /    \\",
+            "/      \\                                  /      \\",
+            "/        \\              @@              /        \\",
+            "/          \\          @@@@@@          /          \\",
+            "/            \\          @@          /            \\",
+            "/              \\                  /              \\",
+            "/                \\              /                \\",
+            "/                  \\__________/                  \\",
+            "/                                                \\",
+            "/    %%   %%%%   %%%%%      %   %   %%%   %   %  \\",
+            "/    %    %  %   %   %      %   %  %   %  %   %  \\",
+            "/   %%%   %  %   %%%%%       % %   %   %  %   %  \\",
+            "/    %    %  %   %  %         %    %   %  %   %  \\",
+            "/    %    %%%%   %   %        %     %%%    %%%   \\",
+            "/                                                \\",
+            "//////////////////////////////////////////////////"
+        ];
+
+        const FLOWER_ART = [
+            "              ..@@@@@@@@..              ",
+            "            .@@@@@@@@@@@@@@.            ",
+            "          .@@@@@@%%%%%%@@@@@@.          ",
+            "         .@@@@%%%%%%%%%%%%@@@@.         ",
+            "         .@@@%%%%@@@@@@%%%%@@@.         ",
+            "         .@@@@%%@@@@@@@@%%@@@@.         ",
+            "          .@@@@%%%%%%%%%%@@@@.          ",
+            "           ..@@@@@@@@@@@@@@..           ",
+            "             ...@@@@@@@@...             ",
+            "                   ||                   ",
+            "             \\\\    ||    //             ",
+            "              \\\\\\  ||  ///              ",
+            "               \\\\\\\\||////               ",
+            "                   ||                   ",
+            "                   ||                   ",
+            "                   ||                   ",
+            "                   ||                   "
+        ];
+
+        function getEnvelopeColor(ch) {
+            if (ch === '@') return '#ff3b5c'; // Червоне серце-печатка
+            if (ch === '%') return '#ffd166'; // Золотий напис FOR YOU
+            return '#e0a96d'; // Теплий паперовий відтінок
+        }
+
+        function getFlowerColor(ch) {
+            if (ch === '@') return '#ff2a55'; // Яскраві пелюстки
+            if (ch === '%') return '#ff8fa3'; // Ніжно-рожеві переливи
+            if (ch === '|' || ch === '\\' || ch === '/') return '#4ade80'; // Зелене стебло
+            return '#ffe5ec'; // Світлі іскри по краях
+        }
+
+        let particles = [];
+        let state = 'CLOSED'; // CLOSED -> EXPLODING -> FORMING
+        let timer = 0;
+
+        function initParticles() {
+            particles = [];
+            // Адаптивний розмір шрифту під телефон або ноутбук
+            const fontSize = Math.max(8, Math.min(16, Math.floor(width / 62)));
+            const charW = fontSize * 0.62;
+            const charH = fontSize * 1.15;
+
+            const envStart = [];
+            const envW = ENVELOPE_ART[0].length * charW;
+            const envH = ENVELOPE_ART.length * charH;
+            const envOffX = (width - envW) / 2;
+            const envOffY = (height - envH) / 2;
+
+            for (let r = 0; r < ENVELOPE_ART.length; r++) {
+                for (let c = 0; c < ENVELOPE_ART[r].length; c++) {
+                    const ch = ENVELOPE_ART[r][c];
+                    if (ch !== ' ') {
+                        envStart.push({
+                            ch: ch,
+                            color: getEnvelopeColor(ch),
+                            x: envOffX + c * charW,
+                            y: envOffY + r * charH
+                        });
+                    }
+                }
+            }
+
+            const flwEnd = [];
+            const flwW = FLOWER_ART[0].length * charW;
+            const flwH = FLOWER_ART.length * charH;
+            const flwOffX = (width - flwW) / 2;
+            const flwOffY = (height - flwH) / 2;
+
+            for (let r = 0; r < FLOWER_ART.length; r++) {
+                for (let c = 0; c < FLOWER_ART[r].length; c++) {
+                    const ch = FLOWER_ART[r][c];
+                    if (ch !== ' ') {
+                        flwEnd.push({
+                            ch: ch,
+                            color: getFlowerColor(ch),
+                            x: flwOffX + c * charW,
+                            y: flwOffY + r * charH
+                        });
+                    }
+                }
+            }
+
+            const count = Math.max(envStart.length, flwEnd.length);
+            for (let i = 0; i < count; i++) {
+                const s = envStart[i % envStart.length];
+                const e = flwEnd[i % flwEnd.length];
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 6 + 2;
+
+                particles.push({
+                    x: s.x,
+                    y: s.y,
+                    origX: s.x,
+                    origY: s.y,
+                    targetX: e.x,
+                    targetY: e.y,
+                    ch: s.ch,
+                    color: s.color,
+                    targetCh: e.ch,
+                    targetColor: e.color,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 2.5,
+                    fontSize: fontSize
+                });
+            }
+
+            // Фоновий зоряний пил, як на відео
+            for (let i = 0; i < 65; i++) {
+                const rx = Math.random() * width;
+                const ry = Math.random() * height;
+                particles.push({
+                    x: rx,
+                    y: ry,
+                    targetX: rx,
+                    targetY: ry,
+                    ch: Math.random() > 0.5 ? '.' : '*',
+                    color: 'rgba(255, 210, 180, 0.35)',
+                    targetCh: '.',
+                    targetColor: 'rgba(255, 180, 200, 0.45)',
+                    vx: (Math.random() - 0.5) * 0.5,
+                    vy: (Math.random() - 0.5) * 0.5,
+                    fontSize: fontSize,
+                    isDust: true
+                });
+            }
+        }
+
+        initParticles();
+
+        function openLetter() {
+            if (state === 'CLOSED') {
+                state = 'EXPLODING';
+                hint.style.opacity = '0';
+            }
+        }
+
+        window.addEventListener('click', openLetter);
+        window.addEventListener('touchstart', openLetter);
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Enter' || e.code === 'Space') openLetter();
+        });
+
+        function animate() {
+            ctx.fillStyle = 'rgba(5, 5, 8, 0.35)'; // Легкий шлейф руху
+            ctx.fillRect(0, 0, width, height);
+
+            if (state === 'EXPLODING') {
+                timer++;
+                if (timer > 35) {
+                    state = 'FORMING';
+                    for (let p of particles) {
+                        if (!p.isDust) {
+                            p.ch = p.targetCh;
+                            p.color = p.targetColor;
+                        }
+                    }
+                }
+            }
+
+            for (let p of particles) {
+                if (p.isDust) {
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    if (p.x < 0) p.x = width;
+                    if (p.x > width) p.x = 0;
+                    if (p.y < 0) p.y = height;
+                    if (p.y > height) p.y = 0;
+                } else if (state === 'EXPLODING') {
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vx *= 0.95;
+                    p.vy *= 0.95;
+                } else if (state === 'FORMING') {
+                    p.x += (p.targetX - p.x) * 0.07;
+                    p.y += (p.targetY - p.y) * 0.07;
+                }
+
+                ctx.font = `bold ${p.fontSize}px Consolas, monospace`;
+                ctx.fillStyle = p.color;
+                ctx.fillText(p.ch, p.x, p.y);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
